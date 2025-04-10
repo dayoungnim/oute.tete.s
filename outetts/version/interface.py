@@ -48,10 +48,27 @@ class InterfaceHF:
         return self._prepare_prompt(prompt)
     
     def get_audio(self, tokens):
+        logger.info(f"input of get_audio: {tokens}")
         output = self.prompt_processor.extract_audio_from_tokens(tokens)
-        if not output:
-            logger.error("No audio tokens found in the output")
+        logger.info(f"Output tokens: {output}")
+
+        # # 원래 요기부터
+        # if not output:
+        #     logger.error("No audio tokens found in the output")
+        #     return None
+        # # 원래 요기까지
+
+        # 요기부터
+        if not output or all(len(o) == 0 for o in output):
+            logger.error("No audio tokens found in the output (empty or all inner lists empty).")
             return None
+
+        # 평탄화(flatten)해서 토치 텐서로 변환
+        # flat_output = [item for sublist in output for item in sublist]
+        # if not flat_output:
+        #     logger.error("Flattened audio token list is empty after processing.")
+        #     return None
+        # 요기까지
 
         return self.audio_codec.decode(
             torch.tensor([output], dtype=torch.int64).to(self.audio_codec.device)
@@ -174,6 +191,7 @@ class InterfaceHF:
             raise ValueError(f"Requested max_length ({max_length}) exceeds the current max_seq_length ({self.config.max_seq_length}).")
 
     def _generate(self, input_ids, config: GenerationConfig):
+        logger.info("generate, hf_model")
         output = self.model.generate(
             input_ids=input_ids,
             config=config
@@ -253,6 +271,7 @@ class InterfaceHF:
             logger.info(f"Proccessing: Chunk {i+1} / {chunk_size}")
 
             input_ids = self.prepare_prompt(chunk, config.speaker)
+            logger.info(f"Input IDs: {input_ids}")
 
             output = self._generate(input_ids, config)
             audio_chunks.extend(output)
@@ -292,14 +311,22 @@ class InterfaceLLAMACPP(InterfaceHF):
         self.config = config
 
     def get_model(self):
+        if self.config.interface_version == info.InterfaceVersion.V3:
+                self.audio_processor = self.config.audio_processor(self.config)
+                self.audio_codec = self.audio_processor.audio_codec
+        logger.info(f"audio_codec: {self.audio_codec}, {self.audio_codec.device}, {self.audio_codec.sr}")
         return GGUFModel(
             model_path=self.config.model_path,
             n_gpu_layers=self.config.n_gpu_layers,
             max_seq_length=self.config.max_seq_length,
-            additional_model_config=self.config.additional_model_config
+            additional_model_config=self.config.additional_model_config,
+            # 요기부터
+            get_audio_fn=self.get_audio,
+            # 요기까지
         )
 
     def _generate(self, input_ids, config):
+        logger.info("generate, llama_cpp_model")
         return self.model.generate(
             input_ids=input_ids,
             config=config,
@@ -324,6 +351,7 @@ class InterfaceEXL2(InterfaceHF):
         return prompt
     
     def _generate(self, input_ids, config):
+        logger.info("generate, exl2_model")
         return self.model.generate(
             input_ids=input_ids,
             config=config,

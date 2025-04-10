@@ -1,4 +1,4 @@
-llama-cpp-python==0.3.8
+# llama-cpp-python==0.3.8
 torch
 torchvision
 torchaudio

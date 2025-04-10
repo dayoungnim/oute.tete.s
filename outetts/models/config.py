@@ -158,6 +158,7 @@ class ModelConfig:
             "interface_version": model_info["interface_version"],
             "backend": backend,
             "verbose": False,
+            # "device": "cuda" if torch.cuda.is_available() else "cpu",
             "device": None,
             "dtype": None,
             "additional_model_config": {},
@@ -176,6 +177,7 @@ class ModelConfig:
                 logger.warning("Flash attention 2 not available. Using default attention implementation.\nFor faster inference on supported hardware, consider installing FlashAttention using:\npip install flash-attn --no-build-isolation")
         elif backend == info.Backend.LLAMACPP:
             config["n_gpu_layers"] = 99
+            logger.info("❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️")
             logger.info("LLAMA.CPP backend selected. Offloading all layers to GPU.")
 
         if backend == info.Backend.EXL2:
