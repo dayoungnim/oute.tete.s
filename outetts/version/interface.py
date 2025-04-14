@@ -45,6 +45,7 @@ class InterfaceHF:
     
     def prepare_prompt(self, text: str, speaker: dict = None):
         prompt = self.prompt_processor.get_completion_prompt(text, speaker)
+        logger.info(f"Prompt: {prompt}")
         return self._prepare_prompt(prompt)
     
     def get_audio(self, tokens):
@@ -148,6 +149,7 @@ class InterfaceHF:
             raise ValueError("Speaker decoding is only supported for InterfaceVersion.V3")
         c1, c2 = [], []
         for i in speaker["words"]:
+            logger.info(f"Decoding: {i}")
             c1.extend(i["c1"])
             c2.extend(i["c2"])
         ModelOutput(self.audio_codec.decode(
@@ -270,6 +272,7 @@ class InterfaceHF:
         for i, chunk in enumerate(text_chunks):
             logger.info(f"Proccessing: Chunk {i+1} / {chunk_size}")
 
+            logger.info(f"speaker: {config.speaker}")
             input_ids = self.prepare_prompt(chunk, config.speaker)
             logger.info(f"Input IDs: {input_ids}")
 

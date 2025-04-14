@@ -2,10 +2,13 @@ from transformers import AutoTokenizer
 import re
 
 from .tokens import SpecialTokens
+from loguru import logger
 
+# llama generated tokens -> auido codebook index
 class PromptProcessor:
     def __init__(self, tokenizer_path: str):
         self.special_tokens = SpecialTokens()
+        logger.info(f"🤖 SPECIAL TOKENS: {self.special_tokens}")
 
         if tokenizer_path:
             self.tokenizer = AutoTokenizer.from_pretrained(tokenizer_path)
@@ -18,6 +21,10 @@ class PromptProcessor:
         self.global_features = "{fs}{codes}{fe}\n"
 
     def get_audio_token_map(self):
+        logger.info(f"special tokens c1 {self.special_tokens.c1}")
+        logger.info(f"special tokens c2 {self.special_tokens.c2}")
+        # special_tokens.c1.format(i) = <|c1_{i}|> : 해서 이런 문자열을, encode 해서 토큰 아이디로 변환함.
+        # ? add special tokens = False (bos, eos 같은 토큰은 제외인듯)
         self.c1 = {
             self.tokenizer.encode(self.special_tokens.c1.format(i), add_special_tokens=False)[0]: i
             for i in range(1025)
@@ -26,7 +33,11 @@ class PromptProcessor:
             self.tokenizer.encode(self.special_tokens.c2.format(i), add_special_tokens=False)[0]: i
             for i in range(1025)
         }
+        logger.info(f"🤩c1: {self.c1}")
+        logger.info(f"🤩c2: {self.c2}")
 
+    # 오디오의 전역 특성 (음량, 피치 등)을 <|pitch_0.23|> 과 같은 형태로 바꿈.
+    # 이걸 프롬프트에 포함시키면 모델이 참고함
     def get_features(self, f: dict):
         features = {
             "energy": f.get("energy", 0),
@@ -152,11 +163,18 @@ class PromptProcessor:
         return prompt 
 
     def extract_audio_from_tokens(self, tokens: list[int]):
+        logger.info(f"Extracting audio from tokens ^^: {tokens}")
+        # 1. c1 dict에 있는 토큰 id를 찾아서, 해당 값을 codebook1에 넣음
+        ## ex. 만약에 토큰 129291이 c1에 있고, 해당 값이 42면, codebook1에 42추가
         codebook1 = [self.c1[i] for i in tokens if i in self.c1]
+        # 2. c2 //
         codebook2 = [self.c2[i] for i in tokens if i in self.c2]
+        # 길이를 맞추려고 더 짧은 쪽으로 짤
         t = min(len(codebook1), len(codebook2))
         codebook1 = codebook1[:t]
         codebook2 = codebook2[:t]
+        # 오디오 복원을 위해 필요한 오디오 코드북 인덱스 2개 리스트 ex.
+        ## ex. [[0, 1, 2] (c1) , [3, 4, 5] (c2)]
         return [codebook1, codebook2]
 
 

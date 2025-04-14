@@ -28,6 +28,7 @@ except:
 CURRENT_VERSION = version.parse(llama_cpp_version)
 VERSION_0_3_7 = version.parse("0.3.7")
 
+
 class GGUFModel:
     def __init__(
             self,
@@ -65,26 +66,60 @@ class GGUFModel:
     def generate(self, input_ids: list[int], config: GenerationConfig):
         if config.generation_type == GenerationType.STREAM:
             return self._generate_stream(input_ids, config)
-        return self._generate(input_ids, config)
+        return self._generate_stream(input_ids, config)
+
+    # def _generate_stream(self, input_ids: list[int], config: GenerationConfig):
+    #     input_size = len(input_ids)
+    #     gen = self.model.generate(
+    #         input_ids,
+    #         temp=config.sampler_config.temperature,
+    #         repeat_penalty=config.sampler_config.repetition_penalty,
+    #         top_k=config.sampler_config.top_k,
+    #         top_p=config.sampler_config.top_p,
+    #         min_p=config.sampler_config.min_p,
+    #         mirostat_eta=config.sampler_config.mirostat_eta,
+    #         mirostat_tau=config.sampler_config.mirostat_tau,
+    #         **config.additional_gen_config,
+    #     )
+    #     print(type(gen))
+
+    #     logger.info(f"Generating tokens with config: {config}")
+    #     logger.info(f"✨ ✨ ✨ ✨ ✨ ✨ ✨ gen: {gen}")
+
+    #     start_time = None  # 첫 토큰 시간
+    #     prev_time = None   # 이전 토큰 시간
+    #     token_count = 0
+
+    #     gen_start_time = time.perf_counter()
+    #     for token in gen:
+    #         current_time = time.perf_counter()
+
+    #         if start_time is None:
+    #             first_token_delay = current_time - gen_start_time
+    #             start_time = current_time
+    #             logger.info(f"⏱ 첫 토큰 생성까지 걸린 시간: {first_token_delay:.4f}초")
+    #         else:
+    #             delta = current_time - prev_time
+    #             logger.info(
+    #                 f"⏱ 토큰 {token_count} → {token_count + 1} 생성 시간차: {delta:.4f}초")
+
+    #         logger.info(f"⭐️Token: {token}⭐️")
+
+    #         yield token
+
+    #         prev_time = current_time
+    #         token_count += 1
+    #         input_size += 1
+
+    #         if (llama_token_is_eog(self.is_eog(), token) or
+    #                 input_size >= config.max_length):
+    #             break
+
+    #     total_time = time.perf_counter() - start_time if start_time else 0
+    #     logger.info(f"🏁 전체 토큰 생성 시간: {total_time:.4f}초")
 
     def _generate_stream(self, input_ids: list[int], config: GenerationConfig):
-        start_time = time.time()
-        first_token_time = None
         input_size = len(input_ids)
-        # 원래 요기부터
-        # gen = tqdm(self.model.generate(
-        #     input_ids,
-        #     temp=config.sampler_config.temperature,
-        #     repeat_penalty=config.sampler_config.repetition_penalty,
-        #     top_k=config.sampler_config.top_k,
-        #     top_p=config.sampler_config.top_p,
-        #     min_p=config.sampler_config.min_p,
-        #     mirostat_eta=config.sampler_config.mirostat_eta,
-        #     mirostat_tau=config.sampler_config.mirostat_tau,
-        #     **config.additional_gen_config,
-        # ))
-        # 원래 요기까지
-        # 요기부터
         gen = self.model.generate(
             input_ids,
             temp=config.sampler_config.temperature,
@@ -96,81 +131,170 @@ class GGUFModel:
             mirostat_tau=config.sampler_config.mirostat_tau,
             **config.additional_gen_config,
         )
-        print(type(gen))
 
-        if hasattr(gen, '__iter__') and not isinstance(gen, str):
-            print("✅ This is a generator, yields tokens one-by-one.")
-        else:
-            print("❌ This is not a generator, it's a complete output.")
-
-        # 요기까지
-        logger.info(f"Generating tokens with config: {config}")
-        logger.info(f"✨ ✨ ✨ ✨ ✨ ✨ ✨ gen: {gen}")
-        for token in gen:
-            logger.info(f"⭐️Token: {token}⭐️")
-
-            if first_token_time is None:
-                first_token_time = time.time() - start_time
-                logger.info(f"First token generation time: {first_token_time:.2f}s")
-            
-            yield token
-            input_size += 1
-            if (llama_token_is_eog(self.is_eog(), token) or 
-                input_size >= config.max_length):
-                break
-            # 원래 요기부터
-            # gen.set_postfix({
-            #     "tokens": input_size,
-            #     "max tokens": config.max_length,
-            #     "first token time": f"{first_token_time:.2f}s",
-            #     "total time": f"{time.time() - start_time:.2f}s"
-            # })
-            # 원래 요기까지
-        total_time = time.time() - start_time
-        logger.info(f"Total token generation time: {total_time:.2f}s")
-
-    def _generate(self, input_ids: list[int], config: GenerationConfig) -> list:
-        start_time = time.time()
+        start_time = None  # 첫 토큰 시간
+        first_audio_time = None  # 첫 오디오 생성 시간
+        token_count = 0
         new_tokens = []
-        # 요기부터
-        first_saved_audio_time = None
-        new_tokens2 = []
-        audio_chunk_index = 1
-        # 요기까지
-        for token in self._generate_stream(input_ids, config):
-            # # 요기부터
-            if self.get_audio:
-                new_tokens2.append(token)
-                logger.info(f"new_tokens2: {new_tokens2}")
 
-                audio_pieces = self.get_audio(new_tokens2)
+        gen_start_time = time.perf_counter()
+        for token in gen:
+            current_time = time.perf_counter()
+
+            if start_time is None:
+                first_token_delay = current_time - gen_start_time
+                start_time = current_time
+                logger.info(f"⏱ 첫 토큰 생성까지 걸린 시간: {first_token_delay:.4f}초")
+
+            if self.get_audio:
+                new_tokens.append(token)
+                audio_pieces = self.get_audio(new_tokens)
+
+                if audio_pieces is not None and first_audio_time is None:
+                    first_audio_time = time.perf_counter()
+                    audio_delay = first_audio_time - gen_start_time
+                    logger.info(f"🔊 첫 audio_pieces 생성까지 걸린 시간: {audio_delay:.4f}초")
+
                 if audio_pieces is None:
-                    logger.warning("Audio is empty, skipping save.")
                     continue
 
-                current_audio_time = time.time() - start_time
-                if first_saved_audio_time is None:
-                    first_saved_audio_time = current_audio_time
-                    logger.info(
-                        f"🎧 First audio chunk generated at: {first_saved_audio_time:.2f}s "
-                        f"(chunk {audio_chunk_index}, tokens: {len(new_tokens2)}, last_token: {token})"
-                    )
-                else:
-                    logger.info(
-                        f"🎵 Audio chunk {audio_chunk_index} generated at: {current_audio_time:.2f}s "
-                        f"(tokens: {len(new_tokens2)}, last_token: {token})"
-                    )
+            token_count += 1
+            input_size += 1
 
-                
-                model_output_itf = ModelOutput(audio_pieces, 24000)
-                filename = f"chunked_output_{audio_chunk_index}_tok-{token}.wav"
-                model_output_itf.save(filename)
+            if (llama_token_is_eog(self.is_eog(), token) or
+                    input_size >= config.max_length):
+                break
 
-                audio_chunk_index += 1
-            # # 요기까지
-            logger.info(f"type of token: {type(token)}")
-            new_tokens.append(token)
-        total_time = time.time() - start_time
-        logger.info(f"Generated {len(new_tokens)} tokens: {new_tokens}, type: {type(new_tokens)}")
-        logger.info(f"Total generation time: {total_time:.2f}s")
+        total_time = time.perf_counter() - start_time if start_time else 0
+        logger.info(f"🏁 전체 토큰 생성 시간: {total_time:.4f}초")
         return new_tokens
+
+
+
+    # def _generate(self, input_ids: list[int], config: GenerationConfig) -> list:
+    #     new_tokens = []
+    #     # 요기부터
+    #     new_tokens2 = []
+    #     audio_chunk_index = 1
+    #     # 요기까지
+    #     for token in self._generate_stream(input_ids, config):
+    #         # # 요기부터
+    #         if self.get_audio:
+    #             new_tokens2.append(token)
+    #             logger.info(f"new_tokens2: {new_tokens2}")
+
+    #             audio_start_time = time.perf_counter()
+
+    #             audio_pieces = self.get_audio(new_tokens2)
+
+    #             audio_end_time = time.perf_counter()
+    #             elapsed_audio_time = audio_end_time - audio_start_time
+    #             logger.info(f"🕒 get_audio() with {len(new_tokens2)} tokens took {elapsed_audio_time:.4f} seconds")
+
+    #             if audio_pieces is None:
+    #                 logger.warning("Audio is empty, skipping save.")
+    #                 continue
+
+    #             model_output_itf = ModelOutput(audio_pieces, 24000)
+    #             filename = f"chunked_output_{audio_chunk_index}_tok-{token}.wav"
+    #             model_output_itf.save(filename)
+
+    #             audio_chunk_index += 1
+
+    #             # # 요기까지
+    #             new_tokens.append(token)
+    #     logger.info(f"Generated {len(new_tokens)} tokens: {new_tokens}")
+    #     return new_tokens
+
+    # def _generate(self, input_ids: list[int], config: GenerationConfig, chunk_size: int = 40) -> list:
+    #     new_tokens = []
+    #     temp_tokens = []  # chunk_size만큼 모을 임시 토큰 리스트
+    #     audio_chunk_index = 1
+
+    #     for token in self._generate_stream(input_ids, config):
+    #         if self.get_audio:
+    #             temp_tokens.append(token)
+
+    #             # chunk_size만큼 쌓이면 처리
+    #             if len(temp_tokens) == chunk_size:
+    #                 logger.info(f"🎧 Generating audio from {chunk_size} tokens: {temp_tokens}")
+
+    #                 audio_start_time = time.perf_counter()
+    #                 audio_pieces = self.get_audio(temp_tokens)
+    #                 audio_end_time = time.perf_counter()
+
+    #                 elapsed_audio_time = audio_end_time - audio_start_time
+    #                 logger.info(f"🕒 get_audio() with {chunk_size} tokens took {elapsed_audio_time:.4f} seconds")
+
+    #                 if audio_pieces is None:
+    #                     logger.warning("Audio is empty, skipping save.")
+    #                 else:
+    #                     model_output_itf = ModelOutput(audio_pieces, 24000)
+    #                     filename = f"chunked_output_{audio_chunk_index}_tok-{token}.wav"
+    #                     model_output_itf.save(filename)
+    #                     audio_chunk_index += 1
+
+    #                 temp_tokens = []  # 다음 chunk 준비
+
+    #         new_tokens.append(token)
+
+    #     # 남은 토큰 처리
+    #     if self.get_audio and temp_tokens:
+    #         logger.info(f"🎧 Generating audio from final tokens (len={len(temp_tokens)}): {temp_tokens}")
+    #         audio_pieces = self.get_audio(temp_tokens)
+    #         if audio_pieces:
+    #             model_output_itf = ModelOutput(audio_pieces, 24000)
+    #             filename = f"chunked_output_{audio_chunk_index}_final.wav"
+    #             model_output_itf.save(filename)
+
+    #     logger.info(f"Generated {len(new_tokens)} tokens: {new_tokens}")
+    #     return new_tokens
+
+
+
+
+    # def _generate(self, input_ids: list[int], config: GenerationConfig) -> list:
+    #     new_tokens = []
+    #     new_tokens2 = []
+    #     audio_chunk_index = 1
+
+    #     first_audio_start_time = None  # 최초 시작 시간 저장용
+    #     first_audio_ready_time = None  # 최초 audio_pieces 생성 시간 저장용
+
+    #     for token in self._generate_stream(input_ids, config):
+    #         if self.get_audio:
+    #             new_tokens2.append(token)
+    #             logger.info(f"new_tokens2: {new_tokens2}")
+
+    #             if first_audio_start_time is None:
+    #                 first_audio_start_time = time.perf_counter()
+    #                 logger.info(f"⏱ 첫 audio_pieces 생성 시작 시간: {first_audio_start_time:.4f}초")
+
+    #             audio_start_time = time.perf_counter()
+    #             audio_pieces = self.get_audio(new_tokens2)
+    #             audio_end_time = time.perf_counter()
+
+    #             elapsed_audio_time = audio_end_time - audio_start_time
+    #             logger.info(f"🕒 get_audio() with {len(new_tokens2)} tokens took {elapsed_audio_time:.4f} seconds")
+
+    #             if audio_pieces is None:
+    #                 logger.warning("Audio is empty, skipping save.")
+    #                 continue
+
+    #             # 첫 번째 audio_pieces가 생성된 순간 기록
+    #             if first_audio_ready_time is None:
+    #                 first_audio_ready_time = time.perf_counter()
+    #                 logger.info(f"⏱ 첫 audio_pieces 생성 완료 시간: {first_audio_ready_time:.4f}초")
+    #                 time_to_first_audio = first_audio_ready_time - first_audio_start_time
+    #                 logger.info(f"⏱️ Time until first audio_pieces was ready: {time_to_first_audio:.4f} seconds")
+
+    #             model_output_itf = ModelOutput(audio_pieces, 24000)
+    #             filename = f"chunked_output_{audio_chunk_index}_tok-{token}.wav"
+    #             model_output_itf.save(filename)
+
+    #             audio_chunk_index += 1
+
+    #             new_tokens.append(token)
+
+    #     logger.info(f"Generated {len(new_tokens)} tokens: {new_tokens}")
+    #     return new_tokens

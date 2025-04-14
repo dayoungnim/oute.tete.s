@@ -15,7 +15,7 @@ echo "🚀 Using GPU $BEST_GPU"
 export CUDA_VISIBLE_DEVICES=$BEST_GPU
 
 # 로그 파일 경로
-LOGFILE="log_$NOW.txt"
+LOGFILE="log_$NOW.ans"
 
 # Python 스크립트 실행 및 로그 저장
 # python infer.py | tee "$LOGFILE"
